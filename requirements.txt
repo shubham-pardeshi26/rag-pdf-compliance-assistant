@@ -1,7 +1,15 @@
+# Core
 fastapi
 uvicorn
+pydantic
 streamlit
+
+# ML & RAG
 langchain
-faiss-cpu
 openai
+faiss-cpu
+
+# Utils
 python-dotenv
+pandas
+PyPDF2
