@@ -21,7 +21,6 @@ def health():
 
 @app.post("/ingest")
 async def ingest(file: UploadFile = File(...)):
-    # Save file temporarily
     temp_path = Path("uploads") / file.filename
     temp_path.parent.mkdir(exist_ok=True)
     with open(temp_path, "wb") as f:
@@ -48,6 +47,25 @@ async def ingest(file: UploadFile = File(...)):
 
     return {
         "filename": file.filename,
-        "chunks_stored": len(chunks),
-        "vectorstore_path": "vectorstore/"
+        "chunks_stored": len(chunks)
+    }
+
+
+@app.post("/query")
+async def query(question: str):
+    # Embed the question
+    q_embedding = embedding_model.encode([question]).tolist()[0]
+
+    # Search in vector DB
+    results = collection.query(
+        query_embeddings=[q_embedding],
+        n_results=3  
+    )
+
+    # Extract documents
+    retrieved_chunks = results.get("documents", [[]])[0]
+
+    return {
+        "question": question,
+        "top_chunks": retrieved_chunks
     }
