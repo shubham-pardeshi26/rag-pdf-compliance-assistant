@@ -1,71 +1,38 @@
-from fastapi import FastAPI, UploadFile, File
-from pathlib import Path
-from pypdf import PdfReader
-import chromadb
-from sentence_transformers import SentenceTransformer
+from fastapi import FastAPI, UploadFile, File,HTTPException
+from pydantic import BaseModel
+from .rag_helpers import process_pdf_and_store, query_with_rag
 
-app = FastAPI(title="RAG PDF Compliance Assistant", version="0.0.1")
 
-# initialize embedding model + chroma client
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-chroma_client = chromadb.PersistentClient(path="vectorstore")
-collection = chroma_client.get_or_create_collection(name="pdf_docs")
+# Initialize FastAPI app
+app = FastAPI(title="PDF Compliance Assistant (RAG)")
 
-@app.get("/")
-def root():
-    return {"message": "Backend is running 🚀"}
+# ------------------------------
+# 📌 Upload PDF Endpoint
+# ------------------------------
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
 
-@app.post("/ingest")
-async def ingest(file: UploadFile = File(...)):
-    temp_path = Path("uploads") / file.filename
-    temp_path.parent.mkdir(exist_ok=True)
-    with open(temp_path, "wb") as f:
-        f.write(await file.read())
+@app.post("/upload_pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+    # Ensure it's a PDF
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
 
-    # Extract text from PDF
-    reader = PdfReader(str(temp_path))
-    full_text = ""
-    for page in reader.pages:
-        full_text += page.extract_text() or ""
+    file_bytes = await file.read()
+    try:
+        num_chunks = process_pdf_and_store(file_bytes, file.filename)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
 
-    # Chunk text (basic split)
-    chunks = [full_text[i:i+500] for i in range(0, len(full_text), 500)]
+    return {"message": f"Stored {num_chunks} chunks from {file.filename}"}
 
-    # Embed and store in Chroma
-    embeddings = embedding_model.encode(chunks).tolist()
-    ids = [f"{file.filename}_{i}" for i in range(len(chunks))]
 
-    collection.add(
-        documents=chunks,
-        embeddings=embeddings,
-        ids=ids
-    )
-
-    return {
-        "filename": file.filename,
-        "chunks_stored": len(chunks)
-    }
-
+# ------------------------------
+# 📌 Query Endpoint
+# ------------------------------
+class QueryRequest(BaseModel):
+    question: str
 
 @app.post("/query")
-async def query(question: str):
-    # Embed the question
-    q_embedding = embedding_model.encode([question]).tolist()[0]
-
-    # Search in vector DB
-    results = collection.query(
-        query_embeddings=[q_embedding],
-        n_results=3  
-    )
-
-    # Extract documents
-    retrieved_chunks = results.get("documents", [[]])[0]
-
-    return {
-        "question": question,
-        "top_chunks": retrieved_chunks
-    }
+async def query_docs(req: QueryRequest):
+    result = query_with_rag(req.question)
+    return result

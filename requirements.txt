@@ -8,6 +8,8 @@ streamlit
 langchain
 openai
 faiss-cpu
+chromadb
+sentence-transformers
 
 # Utils
 python-dotenv
@@ -15,3 +17,4 @@ pandas
 PyPDF2
 python-multipart
 pypdf
+PyMuPDF
